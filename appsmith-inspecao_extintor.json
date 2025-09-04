@@ -1,0 +1,77 @@
+{
+  "pages": [
+    {
+      "name": "Login",
+      "widgets": [
+        {"type":"Text","widgetId":"txtTitle","props":{"text":"Sistema de Inspeção de Extintores - Login"}},
+        {"type":"Input","widgetId":"txtEmail","props":{"placeholder":"Email","isPassword":false}},
+        {"type":"Input","widgetId":"txtSenha","props":{"placeholder":"Senha","isPassword":true}},
+        {"type":"Button","widgetId":"btnLogin","props":{"text":"Entrar","onClick":"{{loginQuery.run(); if(loginQuery.data.length>0){navigateTo('Dashboard'); storeValue('user', loginQuery.data[0])} else {showAlert('Usuário ou senha inválidos','error')}}"}}
+      ],
+      "queries": [
+        {"name":"loginQuery","datasource":"PostgresDS","type":"select","query":"SELECT id, nome, email, nivel_acesso FROM Usuarios WHERE email = '{{txtEmail.text}}' AND senha = '{{txtSenha.text}}';"}
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "widgets": [
+        {"type":"Text","widgetId":"txtDashTitle","props":{"text":"Dashboard - Visão Geral"}},
+        {"type":"Table","widgetId":"tblExtintores","props":{"columns":["id","setor","tipo","validade","ultimo_teste","qr_code_url"],"dataSource":"{{getExtintores.data}}"}},
+        {"type":"Button","widgetId":"btnNovoExtintor","props":{"text":"Novo Extintor","onClick":"navigateTo('CadastroExtintor')"}},
+        {"type":"Button","widgetId":"btnRelatorios","props":{"text":"Relatórios","onClick":"navigateTo('Relatorios')"}}
+      ],
+      "queries": [
+        {"name":"getExtintores","datasource":"PostgresDS","type":"select","query":"SELECT * FROM Extintores ORDER BY id DESC;"}
+      ]
+    },
+    {
+      "name": "CadastroExtintor",
+      "widgets": [
+        {"type":"Text","widgetId":"txtCadTitle","props":{"text":"Cadastro / Edição de Extintor"}},
+        {"type":"Input","widgetId":"txtSetor","props":{"placeholder":"Setor"}},
+        {"type":"Input","widgetId":"txtTipo","props":{"placeholder":"Tipo (ex: CO2, Pó Químico)"}},
+        {"type":"DatePicker","widgetId":"dpValidade","props":{"placeholder":"Validade"}},
+        {"type":"DatePicker","widgetId":"dpUltimoTeste","props":{"placeholder":"Último Teste"}},
+        {"type":"Button","widgetId":"btnSalvarExtintor","props":{"text":"Salvar","onClick":"{{insertExtintor.run(); insertExtintor.data && updateQr.run(); navigateTo('Dashboard'); showAlert('Extintor salvo','success')}}"}},
+        {"type":"Image","widgetId":"imgQRCode","props":{"image":"{{'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + (insertExtintor.data ? insertExtintor.data[0].id : '')}}"}}
+      ],
+      "queries": [
+        {"name":"insertExtintor","datasource":"PostgresDS","type":"insert","query":"INSERT INTO Extintores (setor, tipo, validade, ultimo_teste) VALUES ('{{txtSetor.text}}','{{txtTipo.text}}','{{dpValidade.selectedDate}}','{{dpUltimoTeste.selectedDate}}') RETURNING id;"},
+        {"name":"updateQr","datasource":"PostgresDS","type":"update","query":"UPDATE Extintores SET qr_code_url = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' || {{insertExtintor.data[0].id}} WHERE id = {{insertExtintor.data[0].id}};"}
+      ]
+    },
+    {
+      "name": "Inspecoes",
+      "widgets": [
+        {"type":"Text","widgetId":"txtInspTitle","props":{"text":"Registrar Inspeção"}},
+        {"type":"Select","widgetId":"drpExtintor","props":{"options":"{{getExtintores.data.map(e=>({label: e.id + ' - ' + e.setor + ' - ' + e.tipo, value: e.id}))}}"}},
+        {"type":"Select","widgetId":"drpStatus","props":{"options":[{"label":"OK","value":"OK"},{"label":"Reprovado","value":"Reprovado"}] }},
+        {"type":"TextArea","widgetId":"txtObservacoes","props":{"placeholder":"Observações"}},
+        {"type":"Button","widgetId":"btnSalvarInspecao","props":{"text":"Salvar Inspeção","onClick":"{{saveInspecao.run(); showAlert('Inspeção registrada','success'); navigateTo('Dashboard')}}"}}
+      ],
+      "queries": [
+        {"name":"getExtintores","datasource":"PostgresDS","type":"select","query":"SELECT id, setor, tipo FROM Extintores ORDER BY id;"},
+        {"name":"saveInspecao","datasource":"PostgresDS","type":"insert","query":"INSERT INTO Inspecoes (extintor_id, status, observacoes) VALUES ({{drpExtintor.selectedOptionValue}}, '{{drpStatus.selectedOptionValue}}', '{{txtObservacoes.text}}');"}
+      ]
+    },
+    {
+      "name": "Relatorios",
+      "widgets": [
+        {"type":"Text","widgetId":"txtRelTitle","props":{"text":"Relatórios de Inspeção"}},
+        {"type":"DatePicker","widgetId":"dpFrom","props":{"placeholder":"De"}},
+        {"type":"DatePicker","widgetId":"dpTo","props":{"placeholder":"Até"}},
+        {"type":"Button","widgetId":"btnGerar","props":{"text":"Gerar Relatório","onClick":"{{getRelatorio.run(); tblRel.data = getRelatorio.data}}"}},
+        {"type":"Table","widgetId":"tblRel","props":{"columns":["id","setor","tipo","data_inspecao","status","observacoes"],"dataSource":"{{getRelatorio.data}}"}},
+        {"type":"Button","widgetId":"btnExport","props":{"text":"Exportar CSV","onClick":"{{exportTableAsCSV(tblRel)}}"}}
+      ],
+      "queries": [
+        {"name":"getRelatorio","datasource":"PostgresDS","type":"select","query":"SELECT i.id, e.setor, e.tipo, i.data_inspecao, i.status, i.observacoes FROM Inspecoes i JOIN Extintores e ON i.extintor_id = e.id WHERE i.data_inspecao BETWEEN '{{dpFrom.selectedDate}}' AND '{{dpTo.selectedDate}}' ORDER BY i.data_inspecao DESC;"}
+      ]
+    }
+  ],
+  "datasources": [
+    {"name":"PostgresDS","type":"Postgres","config":{"host":"<DB_HOST>","port":5432,"database":"<DB_NAME>","username":"<DB_USER>","password":"<DB_PASS>"}}
+  ],
+  "notes": "IMPORTANTE: Após importar este projeto para o Appsmith, configure sua datasource Postgres (ou MySQL) e ajuste os nomes das queries se necessário. Substitua o armazenamento claro de senha por hashing no fluxo de autenticação. Para deploy SaaS: instale sua própria instância Appsmith (Docker/Cloud), implemente multi-tenancy, crie página de onboarding e cobrança, e valide compliance de dados.",
+  "version": "1.0"
+}
